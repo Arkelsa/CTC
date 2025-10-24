@@ -2,77 +2,76 @@ import os
 import discord
 from discord.ext import commands
 from dotenv import load_dotenv
-from poker import PokerGame
-from ocr import OCRSystem
 
-# Load environment variables
 load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
 
-intents = discord.Intents.all()
+# Discord intents
+intents = discord.Intents.default()
+intents.message_content = True  # Required for command content
+intents.members = True
+intents.guilds = True
+
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# Owners - Discord IDs
-OWNERS = ["429646883359817748"]  # replace/add other owner IDs here
-
-# Hosts will be tracked dynamically
+# Owners and Hosts
+OWNERS = {429646883359817748}  # Your Discord ID
 hosts = set()
 
-# Active game instances
-active_games = {}
+# Available games
+GAMES = ["poker"]
 
-# Helper: check if user is owner
-def is_owner(ctx):
-    return str(ctx.author.id) in OWNERS
+# --- Utility Functions ---
+def is_owner(user_id):
+    return user_id in OWNERS
 
-# Helper: check if user is host
-def is_host(ctx):
-    return str(ctx.author.id) in hosts
+def is_host(user_id):
+    return user_id in hosts or is_owner(user_id)
 
+# --- Bot Events ---
 @bot.event
 async def on_ready():
     print(f"✅ Logged in as {bot.user}")
 
-# Owner commands
-@bot.command()
-@commands.check(is_owner)
-async def add_host(ctx, member: discord.Member):
-    hosts.add(str(member.id))
-    await ctx.send(f"✅ {member.display_name} added as host.")
-
-@bot.command()
-@commands.check(is_owner)
-async def del_host(ctx, member: discord.Member):
-    hosts.discard(str(member.id))
-    await ctx.send(f"✅ {member.display_name} removed from hosts.")
-
-# Game selection
+# --- Commands ---
 @bot.command()
 async def games(ctx):
-    msg = "🎮 Available games:\n"
-    msg += "- Poker\n"
-    await ctx.send(msg)
+    """List available games"""
+    await ctx.send("🎮 Available games:\n" + "\n".join(GAMES))
 
-# Start a game
 @bot.command()
-@commands.check(is_host)
 async def start_game(ctx, game_name: str):
-    game_name = game_name.lower()
-    if game_name == "poker":
-        active_games[ctx.channel.id] = PokerGame()
-        await ctx.send("🃏 Poker game started!")
-    else:
-        await ctx.send("❌ Unknown game.")
+    """Start a game if user is host"""
+    if not is_host(ctx.author.id):
+        await ctx.send("❌ Only hosts can start games!")
+        return
+    if game_name.lower() not in GAMES:
+        await ctx.send(f"❌ Game `{game_name}` not found!")
+        return
+    await ctx.send(f"✅ Starting game: {game_name}")
 
-# Test/debug mode (owners only)
 @bot.command()
-@commands.check(is_owner)
-async def test_mode(ctx, game_name: str):
-    game_name = game_name.lower()
-    if game_name == "poker":
-        await ctx.send("🧪 Test mode active for Poker!")
-        # Optional: call PokerGame.test_mode() here
-    else:
-        await ctx.send("❌ Unknown game.")
+async def add_host(ctx, member: discord.Member):
+    if not is_owner(ctx.author.id):
+        await ctx.send("❌ Only owners can add hosts.")
+        return
+    hosts.add(member.id)
+    await ctx.send(f"✅ {member.display_name} is now a host.")
+
+@bot.command()
+async def del_host(ctx, member: discord.Member):
+    if not is_owner(ctx.author.id):
+        await ctx.send("❌ Only owners can remove hosts.")
+        return
+    hosts.discard(member.id)
+    await ctx.send(f"✅ {member.display_name} is no longer a host.")
+
+# Test Mode (owners only)
+@bot.command()
+async def test_mode(ctx):
+    if not is_owner(ctx.author.id):
+        await ctx.send("❌ Test mode is restricted to owners.")
+        return
+    await ctx.send("🔧 Test mode active. Debugging enabled for games.")
 
 bot.run(TOKEN)
